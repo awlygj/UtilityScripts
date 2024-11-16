@@ -1,0 +1,10 @@
+\timing on
+\set QUIET 1
+\pset linestyle unicode
+\pset border 2
+\pset null ø
+\unset QUIET
+\set x '\\setenv PAGER less'
+\set xx '\\setenv PAGER \'pspg -bX --no-mouse -s 1 --bold-labels --bold-cursor --border 2 --double-header --highlight-odd-rec --line-number --vertical-cursor -I\''
+:xx
+
