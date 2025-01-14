@@ -122,6 +122,6 @@ export PSQL_EDITOR_LINENUMBER_ARG='+'
 
 alias sbcl='rlwrap -c sbcl'
 alias ccl='rlwrap -c lx86cl64'
-alias ll='ls -lh'
-alias lla='ls -lha'
+alias ll='ls -lhF'
+alias la='ls -lhaF'
 

@@ -4,7 +4,8 @@
 \pset border 2
 \pset null ø
 \unset QUIET
-\set x '\\setenv PAGER less'
-\set xx '\\setenv PAGER \'pspg -bX --no-mouse -s 1 --bold-labels --bold-cursor --border 2 --double-header --highlight-odd-rec --line-number --vertical-cursor -I\''
-:xx
+\set pless '\\setenv PAGER less'
+\set pcat  '\\setenv PAGER cat'
+\set pps   '\\setenv PAGER \'pspg -bX --no-mouse -s 10 --bold-labels --bold-cursor --border 2 --double-header --highlight-odd-rec --line-number --vertical-cursor -I\''
+:pps
 
