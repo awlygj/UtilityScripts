@@ -20,17 +20,19 @@ insert into #ST_DB_Migration_LIST values
 ('CNZHAPWSCL10D', 'CNZHAPWSQL220', 'CNCMPPRD', 'CNCMPPRD'),
 ('CNZHAPWSCL10D', 'CNZHAPWSQL220', 'DB_NOVA', 'DB_NOVA');
 
-declare @bak_path       nvarchar(max) = N'\\cnsistwscl020\Newsis Backup\FullBackup\';
+declare @bak_path       nvarchar(max) = N'\\CNZHAPWSQL220\DB_Backup\';
+declare @restore_path   nvarchar(max) = N'E:\DB_Backup\';
+declare @data_path      nvarchar(max) = N'E:\MSSQL15.MSSQLSERVER\DBFiles\';
 declare @bak_type       nvarchar(max) = N'_full_backup';
 declare @bak_dt         nvarchar(max) = N'_2025_04_15_16_00_00';    --select format(getdate(), '_yyyy_MM_dd_HH_mm_ss');
 declare @bak_ext        nvarchar(max) = N'.bak';
 declare @bak_desc       nvarchar(max) = N'Windows OSSQL upgrade - 团险Windows OSSQL升级 - plan 历史数据库的一次性迁移';
-declare @data_path      nvarchar(max) = N'E:\MSSQL15.MSSQLSERVER\DBFiles\';
 declare @keep_file_name int           = 1;
 
-declare @exec_sql_backup  nvarchar(max) = '';
-declare @exec_sql_restore nvarchar(max) = '';
-declare @exec_sql_move    nvarchar(max) = '';
+declare @exec_sql_backup   nvarchar(max) = '';
+declare @exec_sql_restore  nvarchar(max) = '';
+declare @exec_sql_move     nvarchar(max) = '';
+declare @exec_sql_filename nvarchar(max) = '';
 
 declare @db_info_flag                               int              = 0;
 declare @compatibility_level                        tinyint          = null;
@@ -71,6 +73,11 @@ open ST_DB_Migration_LIST;
 fetch next from ST_DB_Migration_LIST
 into @oserver, @nserver, @odb, @ndb;
 
+print '--Use SQLCMD to Run Generated SQL Script.'
+print '--sqlcmd -Slocalhost -E -dmaster -HGanjun -N -C -h80 -s"|" -w65535 -W -k2 -e -u -p -I -m-1 -b -g'
+print '';
+print '';
+
 while @@fetch_status = 0
 begin
     --database info
@@ -108,25 +115,27 @@ begin
         where d.name = @odb;
     end
 
+    set @exec_sql_filename = @oserver + N'_' + @odb + @bak_type + @bak_dt;
+
     --backup
     if @prev_odb <> @odb
     begin
         set @exec_sql_backup = N'\
 BACKUP DATABASE ' + @odb + N'
-TO DISK = ''' + @bak_path + @oserver + N'_' + @odb + @bak_type + @bak_dt + @bak_ext + N'''
+TO DISK = N''' + @bak_path + @exec_sql_filename + @bak_ext + N'''
 WITH COMPRESSION,
-     DESCRIPTION = ''' + @bak_desc + N''',
-     NAME = ''' + @oserver + N'_' + @odb + @bak_type + @bak_dt + N''',
-     MEDIADESCRIPTION = ''' + @bak_desc + N''',
-     MEDIANAME = ''' + @oserver + N'_' + @odb + @bak_type + @bak_dt + N''',
+     DESCRIPTION = N''' + @bak_desc + N''',
+     NAME = N''' + @exec_sql_filename + N''',
+     MEDIADESCRIPTION = N''' + @bak_desc + N''',
+     MEDIANAME = N''' + @exec_sql_filename + N''',
      FORMAT,
-     STATS = 20;';
+     STATS = 1;';
     end;
 
     --restore
     set @exec_sql_move = (
-    select N'     move ''' + LogicalName +
-               N''' to ''' + @data_path + iif(@keep_file_name = 1, physical_name, @ndb + TailName) +
+    select N'     move N''' + LogicalName +
+               N''' to N''' + @data_path + iif(@keep_file_name = 1, physical_name, @ndb + TailName) +
            N''',' + char(10)
     from (
         select LogicalName,
@@ -153,12 +162,12 @@ WITH COMPRESSION,
 
     set @exec_sql_restore = N'\
 RESTORE DATABASE ' + @ndb + N'
-FROM DISK = ''' + @bak_path + @oserver + N'_' + @odb + @bak_type + @bak_dt + @bak_ext + N'''
+FROM DISK = N''' + @restore_path + @exec_sql_filename + @bak_ext + N'''
 WITH RECOVERY,
 ' + @exec_sql_move + N'\
      FILE = 1,
-     MEDIANAME = ''' + @oserver + N'_' + @odb + @bak_type + @bak_dt + N''',
-     STATS = 20;';
+     MEDIANAME = N''' + @exec_sql_filename + N''',
+     STATS = 1;';
 
     if @prev_odb <> @odb
     begin
@@ -168,9 +177,9 @@ WITH RECOVERY,
             raiserror('Get Database Info Error, Database Not Found!', 16, 1);
         end else begin
             print concat('-- *DB Size: ', format(@db_size, '###,###,###,###'), ' KIB',
-                            case when @db_size / 1024 / 1024 / 1024 > 0 then concat(' (', @db_size / 1024.0 / 1024 / 1024, 'TIB)')
-                                 when @db_size / 1024 / 1024 > 0 then concat(' (', @db_size / 1024.0 / 1024, 'GIB)')
-                                 when @db_size / 1024 > 0 then concat(' (', @db_size / 1024.0, 'MIB)')
+                            case when @db_size / 1024 / 1024 / 1024 > 0 then concat(' (', @db_size / 1024.0 / 1024 / 1024, ' TIB)')
+                                 when @db_size / 1024 / 1024 > 0 then concat(' (', @db_size / 1024.0 / 1024, ' GIB)')
+                                 when @db_size / 1024 > 0 then concat(' (', @db_size / 1024.0, ' MIB)')
                             end);
             print concat('-- *Compatibility Level: ', @compatibility_level);
             print concat('-- *State: ', @state_desc);
@@ -204,6 +213,14 @@ WITH RECOVERY,
             raiserror('Backup SQL Text Generate Error!', 16, 1);
         end else begin
             print '-- *Generate SQL Text:';
+            print ':connect ' + @oserver + '';
+            print '';
+            print 'use master;';
+            print 'go'
+            print '';
+            print 'if @@SERVERNAME <> ''' + @oserver + ''''
+            print '    raiserror(''The Server[%s] is not [' + @oserver + ']!'', 16, 1, @@SERVERNAME);';
+            print '';
             print @exec_sql_backup;
             print '-- *Generate SQL Text End.';
         end
@@ -217,7 +234,18 @@ WITH RECOVERY,
         raiserror('Restore SQL Text Generate Error!', 16, 1);
     end else begin
         print '-- *Generate SQL Text:';
+        print ':connect ' + @nserver + '';
+        print '';
+        print 'use master;';
+        print 'go'
+        print '';
+        print 'if @@SERVERNAME <> ''' + @nserver + ''''
+        print '    raiserror(''The Server[%s] is not [' + @nserver + ']!'', 16, 1, @@SERVERNAME);';
+        print '';
         print @exec_sql_restore;
+        print '';
+        print ':!! del "' + @restore_path + @exec_sql_filename + @bak_ext + '"';
+        print '';
         print '-- *Generate SQL Text End.';
     end
     print '';
@@ -226,6 +254,7 @@ LOOP_NEXT:
     set @exec_sql_backup                            = '';
     set @exec_sql_restore                           = '';
     set @exec_sql_move                              = '';
+    set @exec_sql_filename                          = '';
 
     set @db_info_flag                               = 0;
     set @compatibility_level                        = null;
@@ -277,3 +306,57 @@ order by t.ndb;
 
 execute sys.xp_fixeddrives;
 execute sys.xp_fileexist '\\cnsistwscl020\Newsis Backup\FullBackup\';
+
+select d.name as db_name,
+       dek.encryption_state,
+       c.name as certificate_name,
+       dek.encryptor_thumbprint
+from sys.certificates as c
+left outer join sys.dm_database_encryption_keys as dek
+    on dek.encryptor_thumbprint = c.thumbprint
+left outer join sys.databases as d
+    on dek.database_id = d.database_id
+order by encryptor_thumbprint;
+
+SELECT *
+FROM sys.symmetric_keys
+WHERE name = '##MS_DatabaseMasterKey##';
+
+
+USE master;
+GO
+
+CREATE MASTER KEY ENCRYPTION BY PASSWORD = '<UseStrongPasswordHere>';
+GO
+BACKUP MASTER KEY TO FILE = 'path_to_file' ENCRYPTION BY PASSWORD = 'password';
+GO
+
+CREATE CERTIFICATE MyServerCert
+WITH SUBJECT = 'My DEK Certificate',
+     EXPIRY_DATE = '99991231';
+GO
+
+BACKUP Certificate MyServerCert
+TO FILE = 'MyServerCert_backup'
+WITH Private KEY (
+    FILE = 'MyServerCert_Priv_key_backup',
+    ENCRYPTION BY Password = 'password');
+GO
+
+CREATE CERTIFICATE MyServerCert
+FROM FILE = 'MyServerCert_backup'    
+WITH PRIVATE KEY (
+    FILE = 'MyServerCert_Priv_key_backup',
+    DECRYPTION BY PASSWORD = 'password');
+GO
+
+USE AdventureWorks2022;
+GO
+
+CREATE DATABASE ENCRYPTION KEY
+    WITH ALGORITHM = AES_256
+    ENCRYPTION BY SERVER CERTIFICATE MyServerCert;
+GO
+
+ALTER DATABASE AdventureWorks2022 SET ENCRYPTION ON;
+GO
