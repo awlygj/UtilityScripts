@@ -214,14 +214,18 @@ WITH RECOVERY,
         end else begin
             print '-- *Generate SQL Text:';
             print ':connect ' + @oserver + '';
+            print 'GO';
             print '';
             print 'use master;';
             print 'go'
             print '';
             print 'if @@SERVERNAME <> ''' + @oserver + ''''
             print '    raiserror(''The Server[%s] is not [' + @oserver + ']!'', 16, 1, @@SERVERNAME);';
+            print 'GO';
             print '';
             print @exec_sql_backup;
+            print 'GO';
+            print '';
             print '-- *Generate SQL Text End.';
         end
         print '';
@@ -235,16 +239,20 @@ WITH RECOVERY,
     end else begin
         print '-- *Generate SQL Text:';
         print ':connect ' + @nserver + '';
+        print 'GO';
         print '';
         print 'use master;';
         print 'go'
         print '';
         print 'if @@SERVERNAME <> ''' + @nserver + ''''
         print '    raiserror(''The Server[%s] is not [' + @nserver + ']!'', 16, 1, @@SERVERNAME);';
+        print 'GO';
         print '';
         print @exec_sql_restore;
+        print 'GO';
         print '';
         print ':!! del "' + @restore_path + @exec_sql_filename + @bak_ext + '"';
+        print 'GO';
         print '';
         print '-- *Generate SQL Text End.';
     end
