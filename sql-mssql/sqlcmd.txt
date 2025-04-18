@@ -1,2 +1,2 @@
-sqlcmd -Sip -Usa -Ppwd -dmaster -HGanjun -N -C -h80 -s"|" -w65535 -W -k2 -e -u -p -I -m-1 -g -oxyz.log
+sqlcmd -Sip -Usa -Ppwd -dmaster -HGanjun -N -C -h80 -s"|" -w65535 -k2 -e -u -p -I -m-1 -g -oxyz.log
 rem -b -E -ixyz.sql
