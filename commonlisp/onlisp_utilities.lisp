@@ -1,53 +1,20 @@
 ;;;;on lisp utilities
+#|
 (defpackage "ONLISP-UTILITIES"
   (:use "COMMON-LISP")
   (:nicknames "OLUTIL")
-  (:export #:last1
-           #:single
-           #:append1
-           #:conc1
-           #:mklist
-           #:longer
-           #:filter
-           #:group
-           #:flatten
-           #:prune
-           #:find2
-           #:before
-           #:after
-           #:duplicate
-           #:split-if
-	   #:most
-	   #:best
-	   #:mostn
-	   #:map0-n
-	   #:map1-n
-	   #:mapa-b
-	   #:map->
-	   #:mappend
-	   #:mapcars
-	   #:rmapcar
-	   #:readlist
-	   #:prompt
-	   #:break-loop
-	   #:mkstr
-	   #:symb
-	   #:reread
-	   #:explode
-	   #:!
-	   #:def!
-	   #:memoize
-	   #:compose
-	   #:fif
-	   #:fint
-	   #:fun
-	   #:lrec
-	   #:count-leaves
-	   #:rfind-if
-	   #:ttrav
-	   #:trec))
+  (:export #:last1        #:single   #:append1    #:conc1     #:mklist
+           #:longer       #:filter   #:group      #:flatten   #:prune
+           #:find2        #:before   #:after      #:duplicate #:split-if
+	   #:most         #:best     #:mostn      #:map0-n    #:map1-n
+	   #:mapa-b       #:map->    #:mappend    #:mapcars   #:rmapcar
+	   #:readlist     #:prompt   #:break-loop #:mkstr     #:symb
+	   #:reread       #:explode  #:!          #:def!      #:memoize
+	   #:compose      #:fif      #:fint       #:fun       #:lrec
+	   #:count-leaves #:rfind-if #:ttrav      #:trec))
 
 (in-package ONLISP-UTILITIES)
+|#
 
 ;;;list
 (proclaim '(inline last1 single append1 conc1 mklist))
@@ -272,13 +239,13 @@
 
 ;;;remember past
 (defun memoize (fn)
-  (let ((cache (make-hash-table :test #'equal))))
+  (let ((cache (make-hash-table :test #'equal)))
   #'(lambda (&rest args)
       (multiple-value-bind (val win) (gethash args cache)
 	(if win
 	    val
 	    (setf (gethash args cache)
-		  (apply fn args))))))
+		  (apply fn args)))))))
 
 ;;;compose
 (defun compose (&rest fns)
@@ -327,7 +294,7 @@
 (defun count-leaves (tree)
   (if (atom tree)
       1
-      (1+ (count-leaves (car tree))
+      (+ (count-leaves (car tree))
 	  (or (if (cdr tree) (count-leaves (cdr tree)))
 	      1))))
 
@@ -356,7 +323,7 @@
 			      (self (cdr tree)))))))
     #'self))
 
-(defun trec (rec &optional (base #'identiy))
+(defun trec (rec &optional (base #'identity))
   (labels
       ((self (tree)
 	 (if (atom tree)
@@ -567,7 +534,9 @@
 (defmacro mvpsetq (&rest args)
   (let* ((pairs (group args 2))
 	 (syms (mapcar #'(lambda (p)
-			   (mapcar #'(lambda (x) (gensym))
+			   (mapcar #'(lambda (x)
+				       (declare (ignore x))
+				       (gensym))
 				   (mklist (car p))))
 		       pairs)))
     (labels ((rec (ps ss)
@@ -599,6 +568,7 @@
 	(temps (mapcar #'(lambda (b)
 			   (if (listp (car b))
 			       (mapcar #'(lambda (x)
+					   (declare (ignore x))
 					   (gensym))
 				       (car b))
 			       (gensym)))
@@ -738,7 +708,7 @@
 	(hits (gensym)))
     `(let ((,hits 0))
        (or ,@(mapcar #'(lambda (a)
-			 '(and ,a (> (incf ,hits) ,need)))
+			 `(and ,a (> (incf ,hits) ,need)))
 		     args)))))
 
 ;;;nthmost
@@ -748,7 +718,10 @@
 (defmacro nthmost/mac (n lst)
   (if (and (integerp n) (< n 20))
       (with-gensyms (glst gi)
-	(let ((syms (map0-n #'(lambda (x) (gensym)) n)))
+	(let ((syms (map0-n #'(lambda (x)
+				(declare (ignore x))
+				(gensym))
+			    n)))
           `(let ((,glst ,lst))
              (unless (< (length ,glst) ,(1+ n))
                ,@(gen-start glst syms)
@@ -983,8 +956,8 @@
 
 (defmacro propmacros (&rest props)
   `(progn
-     ,@(mapcar #'(lambda (p) `(propmacro ,p)
-		   props))))
+     ,@(mapcar #'(lambda (p) `(propmacro ,p))
+	       props)))
 
 (defmacro a+ (&rest args)
   (a+expand args nil))
@@ -1016,9 +989,9 @@
 (defmacro defanaph (name &key calls (rule :all))
   (let* ((opname (or calls (pop-symbol name)))
 	 (body (case rule
-		 (:all   '(anaphex1 args '(,opname)))
-		 (:first '(anaphex2 ',opname args))
-		 (:place '(anaphex3 ',opname args)))))
+		 (:all   `(anaphex1 args '(,opname)))
+		 (:first `(anaphex2 ',opname args))
+		 (:place `(anaphex3 ',opname args)))))
     `(defmacro ,name (&rest args)
        ,body)))
 
