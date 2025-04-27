@@ -1,37 +1,16 @@
+#|
 (defpackage "ANSI-CL-UTILITIES"
-            (:use "COMMON-LISP")
-            (:nicknames "ACLUTIL")
-            (:export "SINGLE?"
-                     "APPEND1"
-                     "MAP-INT"
-                     "FILTER"
-                     "MOST"
-                     #:pair
-                     #:analyze-body
-                     "LIST>"
-                     "LIST<"
-                     "LIST="
-                     "LIST/="
-                     "RANDOM-DPCHAR"
-                     "RANDOM-DPSTRING"
-                     "COMPOSE"
-                     "DISJOIN"
-                     "CONJOIN"
-                     "CURRY"
-                     "RCURRY"
-                     "ALWAYS"
-                     "NIL!"
-                     "WHILE"
-                     "NTIMES"
-                     "FOR"
-                     "IN"
-                     "RANDOM-CHOICE"
-                     "AVG"
-                     "WITH-GENSYMS"
-                     "AIF"
-                     #:setf2))
+  (:use "COMMON-LISP")
+  (:nicknames "ACLUTIL")
+  (:export "SINGLE?" "APPEND1" "MAP-INT" "FILTER" "MOST"
+           #:pair #:analyze-body "LIST>" "LIST<" "LIST="
+           "LIST/=" "RANDOM-DPCHAR" "RANDOM-DPSTRING" "COMPOSE" "DISJOIN"
+           "CONJOIN" "CURRY" "RCURRY" "ALWAYS" "NIL!"
+           "WHILE" "NTIMES" "FOR" "IN" "RANDOM-CHOICE"
+           "AVG" "WITH-GENSYMS" "AIF" #:setf2))
 
 (in-package ANSI-CL-UTILITIES)
+|#
 
 ;Function Utilities
 (defun single? (lst)
