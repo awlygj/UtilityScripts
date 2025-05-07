@@ -9,6 +9,7 @@ create table #DB_Migration_LIST (
     primary key(nserver, ndb)
 );
 
+--="('"&A2&"', '"&B2&"', '"&C2&"', '"&D2&"'),"
 insert into #DB_Migration_LIST values
 --('old_server', 'new_server', 'old_database', 'new_database');
 
