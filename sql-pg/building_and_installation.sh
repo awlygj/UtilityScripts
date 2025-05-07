@@ -61,15 +61,22 @@ vim /etc/network/interfaces
 # The primary network interface
 auto enp0s17
 allow-hotplug enp0s17
-iface enp0s17 inet static #dhcp
+
+#iface enp0s17 inet dhcp
+iface enp0s17 inet static
         address 192.168.8.11/24
         gateway 192.168.8.1
+	#dns-nameservers 192.168.8.1
 
-iface enp0s17 inet6 dhcp #static
-        #address fe80::11/64
-        #gateway fe80::9294:97ff:fe45:de52
+#iface enp0s17 inet6 dhcp	
+iface enp0s17 inet6 static
+        address fe80::11/64
+        gateway fe80::9294:97ff:fe45:de52
 
-sudo systemctl restart networking.service
+vim /etc/dhcp/dhclient.conf
+prepend domain-name-servers 192.168.8.1, fe80::9294:97ff:fe45:de52;
+
+systemctl restart networking.service
 cat /etc/network/interfaces
 cat /etc/resolv.conf
 ip address
@@ -93,6 +100,13 @@ alias ll='ls -lhF'
 . .bashrc
 
 #配置系统操作用户的ssh public key登入
+vim /etc/ssh/sshd_config
+PermitRootLogin no #prohibit-password
+PubkeyAuthentication yes
+PasswordAuthentication no
+AllowTcpForwarding yes
+X11Forwarding yes
+
 mkdir .ssh
 
 vim .ssh/authorized_keys
