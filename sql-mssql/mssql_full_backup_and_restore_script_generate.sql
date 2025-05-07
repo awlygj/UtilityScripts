@@ -2,16 +2,18 @@ use master;
 go
 
 create table #DB_Migration_LIST (
-    oserver nvarchar(255) not null,
-    nserver nvarchar(255) not null,
-    odb     nvarchar(255) not null,
-    ndb     nvarchar(255) not null,
-    primary key(nserver, ndb)
+    oserver  nvarchar(255) not null,
+    nserver  nvarchar(255) not null,
+    odb      nvarchar(255) not null,
+    ndb      nvarchar(255) not null,
+    datapath nvarchar(255),
+    primary key(nserver, ndb),
+    index idx_#DB_Migration_LIST_old (oserver, odb)
 );
 
---="('"&A2&"', '"&B2&"', '"&C2&"', '"&D2&"'),"
+--="('"&A2&"', '"&B2&"', '"&C2&"', '"&D2&"', null),"
 insert into #DB_Migration_LIST values
---('old_server', 'new_server', 'old_database', 'new_database');
+--('old_server', 'new_server', 'old_database', 'new_database', null);
 
 declare @bak_path        nvarchar(max) = N'\\fileserver\DB_Backup\';
 declare @restore_path    nvarchar(max) = N'E:\DB_Backup\';
@@ -25,10 +27,11 @@ declare @enable_db_info  int           = 1;
 declare @enable_bak_res  int           = 1;
 declare @enable_createdb int           = 1;
 
+declare @exec_sql_filename nvarchar(max) = '';
 declare @exec_sql_backup   nvarchar(max) = '';
+
 declare @exec_sql_restore  nvarchar(max) = '';
 declare @exec_sql_move     nvarchar(max) = '';
-declare @exec_sql_filename nvarchar(max) = '';
 declare @exec_sql_createdb nvarchar(max) = '';
 
 declare @db_info_flag                               int              = 0;
@@ -53,33 +56,34 @@ declare @is_memory_optimized_enabled                bit              = null;
 declare @is_memory_optimized_elevate_to_snapshot_on bit              = null;
 declare @db_size                                    int              = null;
 
-declare @prev_odb nvarchar(max) = '';
 declare @oserver  nvarchar(max);
-declare @nserver  nvarchar(max);
 declare @odb      nvarchar(max);
+
+declare @nserver  nvarchar(max);
 declare @ndb      nvarchar(max);
-
-declare DB_Migration_LIST cursor for
-    select *
-    from #DB_Migration_LIST
-    where oserver = @@SERVERNAME
-    order by odb, nserver, ndb;
-
-open DB_Migration_LIST;
-
-fetch next from DB_Migration_LIST
-into @oserver, @nserver, @odb, @ndb;
+declare @datapath nvarchar(max);
 
 print '--Use SQLCMD to Run Generated SQL Script.'
 print '--sqlcmd -Slocalhost -E -dmaster -HGanjun -N -C -h80 -s"|" -w65535 -W -k2 -e -u -p -I -m-1 -b -g'
 print '';
 print '';
 
+declare DB_Migration_LIST_OLD cursor for
+    select distinct oserver, odb
+    from #DB_Migration_LIST
+    where oserver = @@SERVERNAME
+    order by oserver, odb;
+
+open DB_Migration_LIST_OLD;
+
+fetch next from DB_Migration_LIST_OLD
+into @oserver, @odb;
+
 while @@fetch_status = 0
 begin
-    --database info
-    if @prev_odb <> @odb and
-       @enable_db_info = 1
+    -- get database info
+    if @enable_db_info = 1 or
+       @enable_createdb = 1
     begin
         select
             @compatibility_level                        = compatibility_level,
@@ -113,89 +117,12 @@ begin
         where d.name = @odb;
     end
 
-    set @exec_sql_filename = @oserver + N'_' + @odb + @bak_type + @bak_dt;
-
-    --backup
-    if @prev_odb <> @odb and 
-       @enable_bak_res = 1
-    begin
-        set @exec_sql_backup = N'\
-BACKUP DATABASE ' + @odb + N'
-TO DISK = N''' + @bak_path + @exec_sql_filename + @bak_ext + N'''
-WITH COMPRESSION,
-     DESCRIPTION = N''' + @bak_desc + N''',
-     NAME = N''' + @exec_sql_filename + N''',
-     MEDIADESCRIPTION = N''' + @bak_desc + N''',
-     MEDIANAME = N''' + @exec_sql_filename + N''',
-     FORMAT,
-     STATS = 1;';
-    end;
-
-    --restore
-    if @enable_bak_res = 1
-    begin
-        set @exec_sql_move = (
-        select N'     move N''' + LogicalName +
-                   N''' to N''' + @data_path + iif(@keep_file_name = 1, physical_name, @ndb + TailName) +
-               N''',' + char(10)
-        from (
-            select LogicalName,
-                   physical_name,
-                   case when type = 0 and FTId = 1 then '.mdf'
-                        when type = 1 and FTId = 1 then '_log.ldf'
-                        when type = 0 then concat('_', FTId, '.ndf')
-                        when type = 1 then concat('_', FTId, '_log.ldf')
-                   end as TailName
-            from (
-                select mf.name as LogicalName,
-                       reverse(substring(reverse(mf.physical_name),
-                                         1,
-                                         charindex('\', reverse(mf.physical_name)) - 1)) as physical_name,
-                       mf.type,
-                       row_number() over(partition by mf.type order by mf.file_id) as FTId
-                from sys.master_files as mf
-                inner join sys.databases as d
-                    on mf.database_id = d.database_id
-                where d.name = @odb
-            ) as t
-        ) as t
-        for xml path(''));
-
-        set @exec_sql_restore = N'\
-RESTORE DATABASE ' + @ndb + N'
-FROM DISK = N''' + @restore_path + @exec_sql_filename + @bak_ext + N'''
-WITH RECOVERY,
-' + @exec_sql_move + N'\
-     FILE = 1,
-     MEDIANAME = N''' + @exec_sql_filename + N''',
-     STATS = 1;';
-    end
-
-    if @prev_odb <> @odb and
-       @enable_createdb = 1 and
-       @enable_db_info  = 1
-    begin
-        set @exec_sql_createdb = N'\
-CREATE DATABASE ' + @ndb + N'
-COLLATE ' + @collation_name + N'
-;' + case @is_broker_enabled
-        when 0 then N'
-GO
-
-ALTER DATABASE ' + @ndb + N' SET DISABLE_BROKER;'
-        else N'' end;
-    end
-
-    -- print sql text
-    -- db info
-    if @prev_odb <> @odb and
-       @enable_db_info = 1
+    -- print database info
+    if @enable_db_info = 1
     begin
         print '-- *Info: Server[' + @oserver + '], Database[' + @odb + '].';
-        if @db_info_flag = 0
+        if @db_info_flag = 1
         begin
-            raiserror('Get Database Info Error, Database Not Found!', 16, 1);
-        end else begin
             print concat('-- *DB Size: ', format(@db_size, '###,###,###,###'), ' KIB',
                             case when @db_size / 1024 / 1024 / 1024 > 0 then concat(' (', @db_size / 1024.0 / 1024 / 1024, ' TIB)')
                                  when @db_size / 1024 / 1024 > 0 then concat(' (', @db_size / 1024.0 / 1024, ' GIB)')
@@ -220,20 +147,35 @@ ALTER DATABASE ' + @ndb + N' SET DISABLE_BROKER;'
             print concat('-- *Trustworthy: ', iif(@is_trustworthy_on = 1, 'Yes', 'No'));
             print concat('-- *DB Chaining: ', iif(@is_db_chaining_on = 1, 'Yes', 'No'));
             print concat('-- *Containment: ', @containment_desc);
+        end else begin
+            raiserror('Get Database Info Error, Database Not Found!', 16, 1);
         end
         print '';
     end
 
-    -- backup
-    if @prev_odb <> @odb and
-       @enable_bak_res = 1
+    -- get backup file name
+    set @exec_sql_filename = @oserver + N'_' + @odb + @bak_type + @bak_dt;
+
+    -- generate backup script
+    if @enable_bak_res = 1
     begin
+        -- generate backup script
+        set @exec_sql_backup = N'\
+BACKUP DATABASE ' + @odb + N'
+TO DISK = N''' + @bak_path + @exec_sql_filename + @bak_ext + N'''
+WITH COMPRESSION,
+     DESCRIPTION = N''' + @bak_desc + N''',
+     NAME = N''' + @exec_sql_filename + N''',
+     MEDIADESCRIPTION = N''' + @bak_desc + N''',
+     MEDIANAME = N''' + @exec_sql_filename + N''',
+     FORMAT,
+     STATS = 1;
+GO';
+
+        -- print backup script
         print '-- *Backup: Server[' + @oserver + '], Database[' + @odb + '].';
-        if @exec_sql_backup is null or
-           @exec_sql_backup = ''
+        if @exec_sql_backup <> ''
         begin
-            raiserror('Backup SQL Text Generate Error!', 16, 1);
-        end else begin
             print '-- *Generate SQL Text:';
             print ':connect ' + @oserver + '';
             print 'GO';
@@ -246,78 +188,152 @@ ALTER DATABASE ' + @ndb + N' SET DISABLE_BROKER;'
             print 'GO';
             print '';
             print @exec_sql_backup;
-            print 'GO';
-            print '';
             print '-- *Generate SQL Text End.';
+        end else begin
+            raiserror('Backup SQL Text Generate Error!', 16, 1);
         end
         print '';
     end
 
-    --restore
-    if @enable_bak_res = 1
-    begin
-        print '-- *Restore: Server[' + @oserver + ']>>[' + @nserver + '], Database[' + @odb + ']>>[' + @ndb + '].';
-        if @exec_sql_restore is null or
-           @exec_sql_restore = ''
-        begin
-            raiserror('Restore SQL Text Generate Error!', 16, 1);
-        end else begin
-            print '-- *Generate SQL Text:';
-            print ':connect ' + @nserver + '';
-            print 'GO';
-            print '';
-            print 'USE master;';
-            print 'GO'
-            print '';
-            print 'if @@SERVERNAME <> ''' + @nserver + ''''
-            print '    raiserror(''The Server[%s] is not [' + @nserver + ']!'', 16, 1, @@SERVERNAME);';
-            print 'GO';
-            print '';
-            print @exec_sql_restore;
-            print 'GO';
-            print '';
-            print ':!! del "' + @restore_path + @exec_sql_filename + @bak_ext + '"';
-            print 'GO';
-            print '';
-            print '-- *Generate SQL Text End.';
-        end
-    end;
+    --get new server and database
+    declare DB_Migration_LIST_NEW cursor for
+        select nserver, ndb, datapath
+        from #DB_Migration_LIST
+        where oserver = @oserver
+          and odb = @odb
+        order by nserver, ndb;
 
-    -- createdb
-    if @prev_odb <> @odb and
-       @enable_createdb = 1
+    open DB_Migration_LIST_NEW;
+
+    fetch next from DB_Migration_LIST_NEW
+    into @nserver, @ndb, @datapath;
+
+    while @@fetch_status = 0
     begin
-        print '-- *Create Empty Datebase: Server[' + @oserver + ']>>[' + @nserver + '], Database[' + @odb + ']>>[' + @ndb + '].';
-        if @exec_sql_createdb is null or
-           @exec_sql_createdb = ''
+        -- generate restore script
+        if @enable_bak_res = 1
         begin
-            raiserror('Create Empty Datebase SQL Text Generate Error!', 16, 1);
-        end else begin
-            print '-- *Generate SQL Text:';
-            print ':connect ' + @nserver + '';
-            print 'GO';
+            -- get database file new path and name
+            set @exec_sql_move = (
+            select N'     move N''' + LogicalName +
+                       N''' to N''' + iif(@datapath <> '', @datapath, @data_path)
+                                    + iif(@keep_file_name = 1, physical_name, @ndb + TailName) +
+                   N''',' + char(10)
+            from (
+                select LogicalName,
+                       physical_name,
+                       case when type = 0 and FTId = 1 then '.mdf'
+                            when type = 1 and FTId = 1 then '_log.ldf'
+                            when type = 0 then concat('_', FTId, '.ndf')
+                            when type = 1 then concat('_', FTId, '_log.ldf')
+                       end as TailName
+                from (
+                    select mf.name as LogicalName,
+                           reverse(substring(reverse(mf.physical_name),
+                                             1,
+                                             charindex('\', reverse(mf.physical_name)) - 1)) as physical_name,
+                           mf.type,
+                           row_number() over(partition by mf.type order by mf.file_id) as FTId
+                    from sys.master_files as mf
+                    inner join sys.databases as d
+                        on mf.database_id = d.database_id
+                    where d.name = @odb
+                ) as t
+            ) as t
+            for xml path(''));
+
+            -- generate restore script
+            set @exec_sql_restore = N'\
+RESTORE DATABASE ' + @ndb + N'
+FROM DISK = N''' + @restore_path + @exec_sql_filename + @bak_ext + N'''
+WITH RECOVERY,
+' + @exec_sql_move + N'\
+     FILE = 1,
+     MEDIANAME = N''' + @exec_sql_filename + N''',
+     STATS = 1;
+GO';
+
+            -- print restore script
+            print '-- *Restore: Server[' + @oserver + ']>>[' + @nserver + '], Database[' + @odb + ']>>[' + @ndb + '].';
+            if @exec_sql_restore <> ''
+            begin
+                print '-- *Generate SQL Text:';
+                print ':connect ' + @nserver + '';
+                print 'GO';
+                print '';
+                print 'USE master;';
+                print 'GO'
+                print '';
+                print 'if @@SERVERNAME <> ''' + @nserver + ''''
+                print '    raiserror(''The Server[%s] is not [' + @nserver + ']!'', 16, 1, @@SERVERNAME);';
+                print 'GO';
+                print '';
+                print @exec_sql_restore;
+                print '';
+                print ':!! del "' + @restore_path + @exec_sql_filename + @bak_ext + '"';
+                print 'GO';
+                print '-- *Generate SQL Text End.';
+            end else begin
+                raiserror('Restore SQL Text Generate Error!', 16, 1);
+            end
             print '';
-            print 'USE master;';
-            print 'GO'
-            print '';
-            print 'if @@SERVERNAME <> ''' + @nserver + ''''
-            print '    raiserror(''The Server[%s] is not [' + @nserver + ']!'', 16, 1, @@SERVERNAME);';
-            print 'GO';
-            print '';
-            print @exec_sql_createdb;
-            print 'GO';
-            print '';
-            print '-- *Generate SQL Text End.';
         end
+
+        -- generate create empty database
+        if @enable_createdb = 1
+        begin
+            -- generate create empty database
+            set @exec_sql_createdb = N'\
+CREATE DATABASE ' + @ndb + N'
+COLLATE ' + @collation_name + N';' + case @is_broker_enabled
+                                        when 0 then N'
+GO
+
+ALTER DATABASE ' + @ndb + N' SET DISABLE_BROKER;
+GO'
+                                        else N'
+GO'
+                                     end;
+
+            -- print create empty database
+            print '-- *Create Empty Datebase: Server[' + @oserver + ']>>[' + @nserver + '], Database[' + @odb + ']>>[' + @ndb + '].';
+            if @exec_sql_createdb <> ''
+            begin
+                print '-- *Generate SQL Text:';
+                print ':connect ' + @nserver + '';
+                print 'GO';
+                print '';
+                print 'USE master;';
+                print 'GO'
+                print '';
+                print 'if @@SERVERNAME <> ''' + @nserver + ''''
+                print '    raiserror(''The Server[%s] is not [' + @nserver + ']!'', 16, 1, @@SERVERNAME);';
+                print 'GO';
+                print '';
+                print @exec_sql_createdb;
+                print '-- *Generate SQL Text End.';
+            end else begin
+                raiserror('Create Empty Datebase SQL Text Generate Error!', 16, 1);
+            end
+            print '';
+        end
+
+        set @exec_sql_restore  = '';
+        set @exec_sql_move     = '';
+        set @exec_sql_createdb = '';
+
+        fetch next from DB_Migration_LIST_NEW
+        into @nserver, @ndb, @datapath;
     end
+
+    close DB_Migration_LIST_NEW;
+    deallocate DB_Migration_LIST_NEW;
+
     print '';
 
 LOOP_NEXT:
-    set @exec_sql_backup                            = '';
-    set @exec_sql_restore                           = '';
-    set @exec_sql_move                              = '';
     set @exec_sql_filename                          = '';
-    set @exec_sql_createdb                          = '';
+    set @exec_sql_backup                            = '';
 
     set @db_info_flag                               = 0;
     set @compatibility_level                        = null;
@@ -341,14 +357,12 @@ LOOP_NEXT:
     set @is_memory_optimized_elevate_to_snapshot_on = null;
     set @db_size                                    = null;
 
-    set @prev_odb                                   = @odb;
-
-    fetch next from DB_Migration_LIST
-    into @oserver, @nserver, @odb, @ndb;
+    fetch next from DB_Migration_LIST_OLD
+    into @oserver, @odb;
 end
 
-close DB_Migration_LIST;
-deallocate DB_Migration_LIST;
+close DB_Migration_LIST_OLD;
+deallocate DB_Migration_LIST_OLD;
 drop table #DB_Migration_LIST;
 go
 
