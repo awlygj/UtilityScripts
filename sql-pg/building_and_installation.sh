@@ -73,9 +73,13 @@ iface enp0s17 inet6 static
         address fe80::11/64
         gateway fe80::9294:97ff:fe45:de52
 
-vim /etc/dhcp/dhclient.conf
-prepend domain-name-servers 192.168.8.1, fe80::9294:97ff:fe45:de52;
+#vim /etc/dhcp/dhclient.conf
+#prepend domain-name-servers 192.168.8.1;
 
+vim /etc/resolv.conf
+nameserver 192.168.8.1
+nameserver fe80::9294:97ff:fe45:de52%enp0s17
+	
 systemctl restart networking.service
 cat /etc/network/interfaces
 cat /etc/resolv.conf
@@ -100,10 +104,11 @@ alias ll='ls -lhF'
 . .bashrc
 
 #配置系统操作用户的ssh public key登入
-vim /etc/ssh/sshd_config
+sudo vim /etc/ssh/sshd_config
 PermitRootLogin no #prohibit-password
 PubkeyAuthentication yes
 PasswordAuthentication no
+PermitEmptyPasswords no
 AllowTcpForwarding yes
 X11Forwarding yes
 
@@ -117,17 +122,23 @@ la .ssh
 sudo systemctl restart sshd.service
 sudo systemctl status sshd.service
 
+#删除root和my-user-name的密码
+sudo passwd -d root
+sudo passwd -l root
+sudo passwd -d my-user-name
+sudo passwd -l my-user-name
+
 #下载pg的git仓库
 mkdir git-repository
 cd git-repository
 git clone git://git.postgresql.org/git/postgresql.git
+cd postgresql
 git tag
 git checkout tags/REL_17_4
 git describe --tags
 git status
 
 #编译和安装PG
-cd postgresql
 mkdir build_dir
 cd build_dir
 ../configure --enable-nls \
@@ -158,7 +169,6 @@ tree /usr/local/pgsql/
 
 #设置systemd unit
 sudo vim /etc/systemd/system/postgresql.service
-
 [Unit]
 Description=PostgreSQL database server
 Documentation=man:postgres(1)
