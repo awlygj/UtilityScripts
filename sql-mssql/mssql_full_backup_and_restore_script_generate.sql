@@ -366,14 +366,14 @@ deallocate DB_Migration_LIST_OLD;
 drop table #DB_Migration_LIST;
 go
 
-select t.*, d.database_id, d.name, d.collation_name, d.compatibility_level, 'ALTER DATABASE ' + t.ndb + ' SET COMPATIBILITY_LEVEL = 160;'
+select t.*, d.database_id, d.name, d.collation_name, d.compatibility_level, d.recovery_model_desc, 'ALTER DATABASE ' + t.ndb + ' SET COMPATIBILITY_LEVEL = 160;'
 from #DB_Migration_LIST as t
 left outer join sys.databases as d
     on d.name = t.odb
 where t.oserver = @@servername
 order by t.odb;
 
-select *
+select t.*, d.database_id, d.name, d.collation_name, d.compatibility_level, d.recovery_model_desc 
 from #DB_Migration_LIST as t
 left outer join sys.databases as d
     on d.name = t.ndb
