@@ -208,8 +208,8 @@ export MANPATH
 PGDATA=/var/lib/pgsql/data/
 export PGDATA
 
-PGHOST=localhost
-export PGHOST
+#PGHOST=localhost
+#export PGHOST
 
 PGPORT=5432
 export PGPORT
@@ -244,7 +244,7 @@ sudo sysctl vm.overcommit_ratio
 sudo su - postgres
 ulimit -a
 
-env | grep PTAH
+env | grep PATH
 env | grep TZ
 env | grep ^PG
 
@@ -265,8 +265,8 @@ sudo vim /etc/sysctl.conf
 vm.overcommit_memory=2
 net.core.somaxconn=65535
 
-sysctl -p
-sysctl -a
+sudo sysctl -p
+sudo sysctl -a | grep -E '(vm\.overcommit_memory|net\.core\.somaxconn)'
 
 sudo reboot
 
@@ -276,14 +276,23 @@ sudo chown -R postgres:postgres /var/lib/pgsql
 la /var/lib/pgsql/
 
 sudo su - postgres
-initdb -D /var/lib/pgsql/data/ \
+initdb --auth-host=scram-sha-256 \
+       -D /var/lib/pgsql/data/ \
        -E UTF8 \
        --icu-locale=zh_Hans_CN \
        --locale=zh_CN.utf8 \
        --locale-provider=icu
 la /var/lib/pgsql/data/
 tree /var/lib/pgsql/data/
-cat pg_hba.conf
+
+vim /var/lib/pgsql/data/postgresql.conf
+max_connections = 1024
+shared_buffers = 768MB
+unix_socket_group = 'postgres'
+unix_socket_permissions = 0770
+
+cat /var/lib/pgsql/data/pg_hba.conf
+
 logout
 
 sudo systemctl enable postgresql.service
@@ -307,8 +316,8 @@ sudo vim /etc/sysctl.conf
 vm.nr_hugepages=100
 vm.hugetlb_shm_group=994
 
-sysctl -p
-sysctl -a
+sudo sysctl -p
+sudo sysctl -a | grep -E '(vm\.nr_hugepages|vm\.hugetlb_shm_group)'
 cat /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
 
 sudo reboot
